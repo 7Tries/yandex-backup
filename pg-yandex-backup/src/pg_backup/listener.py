@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -47,10 +48,8 @@ class PgListener:
         self._stop_event.set()
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
     async def _run(self) -> None:
         backoff = INITIAL_BACKOFF
@@ -58,6 +57,17 @@ class PgListener:
             try:
                 await self._listen_loop()
                 backoff = INITIAL_BACKOFF  # reset on clean exit
+                if not self._stop_event.is_set():
+                    log.warning(
+                        "Listen loop ended; reconnecting in %.1f seconds...", backoff
+                    )
+                    try:
+                        await asyncio.wait_for(
+                            self._stop_event.wait(), timeout=backoff
+                        )
+                        break
+                    except TimeoutError:
+                        pass
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -75,7 +85,7 @@ class PgListener:
                         self._stop_event.wait(), timeout=backoff
                     )
                     break  # stop was requested during the wait
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 backoff = min(backoff * 2, MAX_BACKOFF)
 

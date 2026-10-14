@@ -85,6 +85,27 @@ async def test_upload_fails_on_insufficient_space(
 
 
 @pytest.mark.asyncio
+async def test_upload_accounts_for_trash_in_quota(
+    tmp_path: Path,
+    fake_client: FakeYaDiskClient,
+    fake_notifier: FakeNotifier,
+) -> None:
+    """Free space check accounts for files in trash taking up quota."""
+    # total: 1000, used: 200, trash: 700 -> free = 100
+    fake_client.disk_info = {"total_space": 1000, "used_space": 200, "trash_size": 700}
+    data = b"x" * 50
+    f = tmp_path / "backup_20240101_143000.sql.gz"
+    f.write_bytes(data)
+
+    # needed=50, free=100. If min_free_bytes=80 -> free - needed = 50 < 80 -> rejected!
+    uploader = make_uploader(fake_client, fake_notifier, min_free_bytes=80)
+    with pytest.raises(RuntimeError, match="Insufficient space"):
+        await uploader.upload(f)
+
+    assert any("trash=700" in m for m in fake_notifier.messages)
+
+
+@pytest.mark.asyncio
 async def test_upload_detects_md5_mismatch(
     tmp_path: Path,
     fake_client: FakeYaDiskClient,

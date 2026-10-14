@@ -4,7 +4,8 @@ from __future__ import annotations
 import asyncio
 import gzip
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pg_backup.config import Settings
@@ -22,14 +23,19 @@ class PgBackupService:
     async def create_backup(self) -> Path:
         """Run pg_dump and return the path to the created .sql.gz file."""
         self._backup_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
         filename = f"backup_{timestamp}.sql.gz"
         dest = self._backup_dir / filename
 
         log.info("Starting pg_dump -> %s", dest)
+
+        system_path = os.environ.get("PATH", "")
+        pg16_path = "/usr/lib/postgresql/16/bin"
+        custom_path = f"{pg16_path}:{system_path}" if pg16_path not in system_path else system_path
         env = {
+            **os.environ,
             "PGPASSWORD": self._settings.postgres_password,
-            "PATH": "/usr/lib/postgresql/16/bin:/usr/bin:/bin",
+            "PATH": custom_path,
         }
 
         cmd = [
@@ -48,23 +54,34 @@ class PgBackupService:
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
-        stdout, stderr = await proc.communicate()
+
+        async def _drain_stderr() -> bytes:
+            if proc.stderr is None:
+                return b""
+            return await proc.stderr.read()
+
+        stderr_task = asyncio.create_task(_drain_stderr())
+
+        # Stream stdout into gzip file without loading the whole dump into memory
+        assert proc.stdout is not None
+        with gzip.open(dest, "wb", compresslevel=9) as gz_out:
+            while True:
+                chunk = await proc.stdout.read(65536)
+                if not chunk:
+                    break
+                gz_out.write(chunk)
+
+        stderr = await stderr_task
+        await proc.wait()
 
         if proc.returncode != 0:
-            log.error("pg_dump failed: %s", stderr.decode())
+            dest.unlink(missing_ok=True)
+            err_msg = stderr.decode(errors="replace")
+            log.error("pg_dump failed: %s", err_msg)
             raise RuntimeError(
-                f"pg_dump failed (rc={proc.returncode}): {stderr.decode()[:500]}"
+                f"pg_dump failed (rc={proc.returncode}): {err_msg[:500]}"
             )
-
-        # Compress output
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._compress, stdout, dest)
 
         size = dest.stat().st_size
         log.info("Backup created: %s (%d bytes)", dest, size)
         return dest
-
-    @staticmethod
-    def _compress(data: bytes, dest: Path) -> None:
-        with gzip.open(dest, "wb", compresslevel=9) as f:
-            f.write(data)

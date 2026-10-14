@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -16,6 +16,7 @@ class FakeYaDiskClient:
         self.disk_info: dict[str, Any] = {
             "total_space": 10 * 1024**3,
             "used_space": 1 * 1024**3,
+            "trash_size": 0,
         }
 
     async def get_disk_info(self) -> dict[str, object]:
@@ -38,7 +39,7 @@ class FakeYaDiskClient:
             "name": name,
             "path": path,
             "type": "file",
-            "created": datetime.now(tz=timezone.utc).isoformat(),
+            "created": datetime.now(tz=UTC).isoformat(),
         }
 
     async def get_meta(self, remote_path: str) -> dict[str, object]:

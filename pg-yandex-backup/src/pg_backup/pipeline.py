@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from pg_backup.interfaces import BackupService, Notifier, YandexDiskClient
+from pg_backup.interfaces import BackupService, Notifier
 from pg_backup.rotation import Rotator
 from pg_backup.uploader import Uploader
 

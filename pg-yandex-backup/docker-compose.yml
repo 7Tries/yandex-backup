@@ -7,20 +7,20 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-mydb}
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres_secret}
+      POSTGRES_PASSWORD_BACKUP: ${POSTGRES_PASSWORD:-backup_secret}
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./sql/01_notify_triggers.sql:/docker-entrypoint-initdb.d/01_notify_triggers.sql:ro
-      - ./sql/02_backup_role.sql:/docker-entrypoint-initdb.d/02_backup_role.sql:ro
-      - ./scripts/init_db.sh:/docker-entrypoint-initdb.d/00_init_db.sh:ro
+      - ./sql:/sql:ro
+      - ./scripts/init_db.sh:/docker-entrypoint-initdb.d/init_db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  backup:
+  backup-service:
     build: .
     depends_on:
       postgres:

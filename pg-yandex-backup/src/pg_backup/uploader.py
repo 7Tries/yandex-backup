@@ -16,6 +16,17 @@ MAX_RETRIES = 5
 INITIAL_BACKOFF = 2.0
 
 
+def _to_int(val: object, default: int = 0) -> int:
+    if val is None:
+        return default
+    if isinstance(val, int):
+        return val
+    try:
+        return int(str(val))
+    except (ValueError, TypeError):
+        return default
+
+
 class Uploader:
     """Uploads a local file to Yandex.Disk with verification."""
 
@@ -47,7 +58,7 @@ class Uploader:
         # Verify
         meta = await self._client.get_meta(remote_path)
         remote_md5 = str(meta.get("md5", ""))
-        remote_size = int(meta.get("size", -1))
+        remote_size = _to_int(meta.get("size", -1), -1)
 
         if remote_md5 != local_md5 or remote_size != local_size:
             msg = (
@@ -64,14 +75,16 @@ class Uploader:
 
     async def _check_free_space(self, local_path: Path) -> None:
         info = await self._client.get_disk_info()
-        total = int(info.get("total_space", 0))
-        used = int(info.get("used_space", 0))
-        free = total - used
+        total = _to_int(info.get("total_space", 0))
+        used = _to_int(info.get("used_space", 0))
+        trash = _to_int(info.get("trash_size", 0))
+        free = total - used - trash
         needed = local_path.stat().st_size
         if free - needed < self._min_free_bytes:
             msg = (
                 f"Insufficient space on Yandex.Disk: "
-                f"free={free} needed={needed} min_free={self._min_free_bytes}"
+                f"free={free} needed={needed} min_free={self._min_free_bytes} "
+                f"(total={total}, used={used}, trash={trash})"
             )
             log.error(msg)
             await self._notifier.notify(f"⚠️ {msg}")

@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
-import sys
 
 import httpx
 
@@ -113,11 +113,8 @@ async def run() -> None:
         stop_event.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _signal_handler)
-        except NotImplementedError:
-            # Windows does not support add_signal_handler for all signals
-            pass
 
     await stop_event.wait()
 

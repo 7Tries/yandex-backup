@@ -116,6 +116,15 @@ python scripts/smoke_test.py
 2. Grant it `cloud_api:disk.write` + `cloud_api:disk.read` scopes
 3. Obtain a token via the OAuth flow and set it as `YANDEX_TOKEN`
 
+## Yandex.Disk Trash and Storage Quota
+
+> [!IMPORTANT]
+> When old backups are rotated, they are moved to the Yandex.Disk **Trash** (`permanently=false`) rather than deleted permanently. This prevents accidental data loss and allows restoring deleted backups from the web interface if needed.
+>
+> **Note on storage quota:** Files residing in the Yandex.Disk Trash still count against your available storage quota! The service accounts for this by computing available space as:
+> `free_space = total_space - used_space - trash_size`.
+> If uploads are refused due to insufficient space (`MIN_FREE_BYTES`), check and empty your Yandex.Disk Trash.
+
 ## License
 
 MIT

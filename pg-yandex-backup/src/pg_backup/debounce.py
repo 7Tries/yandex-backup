@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -35,7 +36,9 @@ class DebounceController:
             await asyncio.sleep(self._delay)
         except asyncio.CancelledError:
             return
-        await self._fire()
+        # Launch backup independently so future triggers cancelling the timer
+        # will never cancel an actively running backup.
+        asyncio.create_task(self._fire())
 
     async def _fire(self) -> None:
         async with self._lock:
@@ -70,7 +73,5 @@ class DebounceController:
         """Cancel any pending timer."""
         if self._timer_task is not None and not self._timer_task.done():
             self._timer_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._timer_task
-            except asyncio.CancelledError:
-                pass

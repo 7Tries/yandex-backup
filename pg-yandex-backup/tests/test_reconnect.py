@@ -24,6 +24,10 @@ async def make_fake_notifies(
         yield FakeNotify(p)
     if then_raise is not None:
         raise then_raise
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        return
 
 
 def make_settings() -> Settings:

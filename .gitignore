@@ -1,0 +1,22 @@
+# Python artifacts & environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Environment & secrets
+.env
+
+# Testing & linters
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Backups
+/backups/
+*.sql.gz
+
+# System files
+.DS_Store
+Thumbs.db

@@ -1,7 +1,7 @@
 """Tests for Rotator — rotation logic with min_keep and prefix filter."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,7 +9,7 @@ from pg_backup.rotation import Rotator
 from tests.fakes import FakeNotifier, FakeYaDiskClient
 
 FOLDER = "/backups/test"
-NOW = datetime.now(tz=timezone.utc)
+NOW = datetime.now(tz=UTC)
 
 
 def make_rotator(

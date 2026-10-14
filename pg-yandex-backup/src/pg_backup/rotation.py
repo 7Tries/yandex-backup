@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from pg_backup.interfaces import Notifier, YandexDiskClient
 
@@ -55,7 +55,7 @@ class Rotator:
             )
             return
 
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=self._retention_days)
+        cutoff = datetime.now(tz=UTC) - timedelta(days=self._retention_days)
         protected = {str(b["name"]) for b in backups[: self._min_keep]}
 
         deleted = 0
