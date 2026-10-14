@@ -118,21 +118,24 @@ async def run() -> None:
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _signal_handler)
 
-    await stop_event.wait()
+    try:
+        await stop_event.wait()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        log.info("Shutdown requested.")
+    finally:
+        log.info("Shutting down...")
+        scheduler.stop()
+        await listener.stop()
+        await debounce.stop()
 
-    log.info("Shutting down...")
-    scheduler.stop()
-    await listener.stop()
-    await debounce.stop()
+        if isinstance(notifier, TelegramNotifier):
+            with contextlib.suppress(Exception):
+                await notifier.notify("🛑 pg-yandex-backup service stopped.")
+            await notifier.aclose()
 
-    if isinstance(notifier, TelegramNotifier):
-        await notifier.notify("🛑 pg-yandex-backup service stopped.")
-        await notifier.aclose()
-
-    await yadisk.aclose()
-    await http_yadisk.aclose()
-
-    log.info("Done.")
+        await yadisk.aclose()
+        await http_yadisk.aclose()
+        log.info("Done.")
 
 
 def main() -> None:

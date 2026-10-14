@@ -26,7 +26,7 @@ class YaDiskClient:
 
     async def ensure_folder(self, path: str) -> None:
         """Create folder (and parents) if it doesn't exist."""
-        parts = path.strip("/").split("/")
+        parts = [p for p in path.strip("/").split("/") if p]
         current = ""
         for part in parts:
             current = f"{current}/{part}"
@@ -67,9 +67,14 @@ class YaDiskClient:
             headers=self._headers,
             params={"path": path, "limit": 1000, "fields": "_embedded.items"},
         )
+        if r.status_code == 404:
+            return []
         r.raise_for_status()
-        items: list[dict[str, object]] = r.json()["_embedded"]["items"]
-        return items
+        resp_data = r.json()
+        if "_embedded" in resp_data and "items" in resp_data["_embedded"]:
+            items: list[dict[str, object]] = resp_data["_embedded"]["items"]
+            return items
+        return []
 
     async def move_to_trash(self, remote_path: str) -> None:
         r = await self._client.delete(
@@ -77,7 +82,8 @@ class YaDiskClient:
             headers=self._headers,
             params={"path": remote_path, "permanently": "false"},
         )
-        if r.status_code not in (202, 204):
+        # 204 No Content, 202 Accepted, 200 OK, 404 Not Found (already deleted)
+        if r.status_code not in (200, 202, 204, 404):
             r.raise_for_status()
 
     async def aclose(self) -> None:

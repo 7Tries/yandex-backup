@@ -40,5 +40,6 @@ class BackupScheduler:
         log.info("Scheduler started with cron: %s", self._cron)
 
     def stop(self) -> None:
-        self._scheduler.shutdown(wait=False)
-        log.info("Scheduler stopped.")
+        if self._scheduler.running:
+            self._scheduler.shutdown(wait=False)
+            log.info("Scheduler stopped.")

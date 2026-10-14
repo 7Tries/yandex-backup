@@ -5,7 +5,9 @@ import gzip
 import hashlib
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
+import httpx
 import pytest
 
 from pg_backup.uploader import Uploader
@@ -124,7 +126,7 @@ async def test_upload_detects_md5_mismatch(
         m["md5"] = "deadbeef" * 4  # wrong md5
         return m
 
-    fake_client.get_meta = tampered_meta  # type: ignore[method-assign]
+    fake_client.get_meta = tampered_meta  # type: ignore[method-assign, assignment]
 
     uploader = make_uploader(fake_client, fake_notifier)
     with pytest.raises(RuntimeError, match="Verification FAILED"):
@@ -148,11 +150,72 @@ async def test_upload_detects_size_mismatch(
 
     async def tampered_meta(path: str) -> dict[str, Any]:
         m = dict(await original_get_meta(path))
-        m["size"] = int(m["size"]) + 999  # wrong size
+        m["size"] = int(str(m["size"])) + 999  # wrong size
         return m
 
-    fake_client.get_meta = tampered_meta  # type: ignore[method-assign]
+    fake_client.get_meta = tampered_meta  # type: ignore[method-assign, assignment]
 
     uploader = make_uploader(fake_client, fake_notifier)
     with pytest.raises(RuntimeError, match="Verification FAILED"):
         await uploader.upload(f)
+
+
+@pytest.mark.asyncio
+async def test_upload_retries_on_500_server_error(
+    tmp_path: Path,
+    fake_client: FakeYaDiskClient,
+    fake_notifier: FakeNotifier,
+) -> None:
+    """Transient 500 error from Yandex.Disk is retried with backoff and succeeds."""
+    data = gzip.compress(b"SELECT 1;")
+    f = tmp_path / "backup_20240101_170000.sql.gz"
+    f.write_bytes(data)
+
+    call_count = [0]
+    orig_upload = fake_client.upload_file
+
+    async def flaky_upload(upload_url: str, upload_data: bytes) -> None:
+        call_count[0] += 1
+        if call_count[0] == 1:
+            req = httpx.Request("PUT", upload_url)
+            resp = httpx.Response(500, request=req)
+            raise httpx.HTTPStatusError("Server Error", request=req, response=resp)
+        await orig_upload(upload_url, upload_data)
+
+    fake_client.upload_file = flaky_upload  # type: ignore[method-assign, assignment]
+
+    uploader = make_uploader(fake_client, fake_notifier)
+    with patch("pg_backup.uploader.INITIAL_BACKOFF", 0.01):
+        remote = await uploader.upload(f)
+
+    assert call_count[0] == 2
+    assert remote in fake_client.files
+
+
+@pytest.mark.asyncio
+async def test_upload_fails_immediately_on_401_unauthorized(
+    tmp_path: Path,
+    fake_client: FakeYaDiskClient,
+    fake_notifier: FakeNotifier,
+) -> None:
+    """Non-retryable 401 error raises immediately without retrying."""
+    data = gzip.compress(b"SELECT 1;")
+    f = tmp_path / "backup_20240101_180000.sql.gz"
+    f.write_bytes(data)
+
+    call_count = [0]
+
+    async def unauthorized_upload(upload_url: str, upload_data: bytes) -> None:
+        call_count[0] += 1
+        req = httpx.Request("PUT", upload_url)
+        resp = httpx.Response(401, request=req)
+        raise httpx.HTTPStatusError("Unauthorized", request=req, response=resp)
+
+    fake_client.upload_file = unauthorized_upload  # type: ignore[method-assign, assignment]
+
+    uploader = make_uploader(fake_client, fake_notifier)
+    with pytest.raises(httpx.HTTPStatusError):
+        await uploader.upload(f)
+
+    assert call_count[0] == 1
+

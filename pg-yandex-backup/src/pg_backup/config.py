@@ -40,17 +40,33 @@ class Settings(BaseSettings):
             raise ValueError("must be positive")
         return v
 
+    @field_validator("yandex_backup_folder")
+    @classmethod
+    def normalize_folder(cls, v: str) -> str:
+        cleaned = v.strip().rstrip("/")
+        if not cleaned.startswith("/"):
+            cleaned = f"/{cleaned}"
+        return cleaned
+
     @property
     def postgres_dsn(self) -> str:
+        from urllib.parse import quote_plus
+
+        encoded_user = quote_plus(self.postgres_user)
+        encoded_pass = quote_plus(self.postgres_password)
         return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"postgresql://{encoded_user}:{encoded_pass}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
     @property
     def postgres_admin_dsn(self) -> str:
+        from urllib.parse import quote_plus
+
+        encoded_admin = quote_plus(self.postgres_admin_user)
+        encoded_pass = quote_plus(self.postgres_admin_password)
         return (
-            f"postgresql://{self.postgres_admin_user}:{self.postgres_admin_password}"
+            f"postgresql://{encoded_admin}:{encoded_pass}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 

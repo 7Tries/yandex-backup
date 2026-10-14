@@ -24,6 +24,7 @@ class DebounceController:
         self._running = False
         self._pending = False
         self._lock = asyncio.Lock()
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     def trigger(self) -> None:
         """Called when a DB change is detected."""
@@ -38,7 +39,9 @@ class DebounceController:
             return
         # Launch backup independently so future triggers cancelling the timer
         # will never cancel an actively running backup.
-        asyncio.create_task(self._fire())
+        task = asyncio.create_task(self._fire())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _fire(self) -> None:
         async with self._lock:

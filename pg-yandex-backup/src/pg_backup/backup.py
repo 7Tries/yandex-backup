@@ -31,7 +31,11 @@ class PgBackupService:
 
         system_path = os.environ.get("PATH", "")
         pg16_path = "/usr/lib/postgresql/16/bin"
-        custom_path = f"{pg16_path}:{system_path}" if pg16_path not in system_path else system_path
+        custom_path = (
+            f"{pg16_path}{os.pathsep}{system_path}"
+            if pg16_path not in system_path
+            else system_path
+        )
         env = {
             **os.environ,
             "PGPASSWORD": self._settings.postgres_password,

@@ -47,10 +47,11 @@ async def download_backup(
             r.raise_for_status()
             download_url = str(r.json()["href"])
 
-    async with httpx.AsyncClient(timeout=300.0) as hc:
-        r = await hc.get(download_url)
-        r.raise_for_status()
-        dest.write_bytes(r.content)
+    async with httpx.AsyncClient(timeout=300.0) as hc, hc.stream("GET", download_url) as resp:
+        resp.raise_for_status()
+        with open(dest, "wb") as f:
+            async for chunk in resp.aiter_bytes(65536):
+                f.write(chunk)
     print(f"Downloaded {remote_path} -> {dest}")
 
 
@@ -87,16 +88,23 @@ def restore_sql(
         f"Restoring {sql_gz_path} into database '{db}' "
         f"on {host}:{port} as user '{user}'..."
     )
-    with gzip.open(sql_gz_path, "rb") as f:
-        sql = f.read()
-    proc = subprocess.run(
-        ["psql", "-h", host, "-p", str(port), "-U", user, "-d", db],
-        input=sql,
-        env=env,
-        capture_output=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"psql failed with return code {proc.returncode}")
+    with gzip.open(sql_gz_path, "rb") as gz_file:
+        proc = subprocess.Popen(
+            ["psql", "-h", host, "-p", str(port), "-U", user, "-d", db],
+            stdin=subprocess.PIPE,
+            env=env,
+        )
+        assert proc.stdin is not None
+        while True:
+            chunk = gz_file.read(65536)
+            if not chunk:
+                break
+            proc.stdin.write(chunk)
+        proc.stdin.close()
+        rc = proc.wait()
+
+    if rc != 0:
+        raise RuntimeError(f"psql failed with return code {rc}")
     print("Restore complete.")
 
 

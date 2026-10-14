@@ -43,7 +43,13 @@ class Rotator:
         # Sort newest-first
         def _created(item: dict[str, object]) -> datetime:
             raw = str(item.get("created", "1970-01-01T00:00:00+00:00"))
-            return datetime.fromisoformat(raw)
+            try:
+                dt = datetime.fromisoformat(raw)
+            except Exception:
+                return datetime.fromtimestamp(0, tz=UTC)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return dt
 
         backups.sort(key=_created, reverse=True)
 
