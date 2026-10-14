@@ -36,6 +36,7 @@ class PgListener:
         self._callback: ChangeCallback | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+        self._connected_once = False
 
     def set_on_change(self, callback: ChangeCallback) -> None:
         self._callback = callback
@@ -93,18 +94,26 @@ class PgListener:
         dsn = self._settings.postgres_dsn
         log.info("Connecting to PostgreSQL for LISTEN on channel '%s'...", CHANNEL)
         async with await psycopg.AsyncConnection.connect(
-            dsn, autocommit=True
+            dsn,
+            autocommit=True,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=3,
         ) as conn:
             await conn.execute(f"LISTEN {CHANNEL}")
             log.info("Listening on channel '%s'.", CHANNEL)
 
-            # After reconnect — run backup in case we missed notifications
-            if self._on_reconnect is not None:
-                log.info("Triggering post-reconnect backup.")
-                try:
-                    await self._on_reconnect()
-                except Exception:
-                    log.exception("post-reconnect backup failed")
+            # Trigger on_reconnect only on subsequent reconnects, not initial start
+            if self._connected_once:
+                if self._on_reconnect is not None:
+                    log.info("Triggering post-reconnect backup.")
+                    try:
+                        await self._on_reconnect()
+                    except Exception:
+                        log.exception("post-reconnect backup failed")
+            else:
+                self._connected_once = True
 
             async for notify in conn.notifies():
                 if self._stop_event.is_set():

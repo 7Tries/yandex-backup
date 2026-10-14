@@ -27,6 +27,13 @@ class TelegramNotifier:
                 self._url,
                 json={"chat_id": self._chat_id, "text": message, "parse_mode": "HTML"},
             )
+            if r.status_code == 400:
+                # If HTML parsing fails (e.g. unescaped chars in exception), fallback to plain text
+                log.warning("Telegram rejected HTML message (%s); resending as plain text.", r.text)
+                r = await self._client.post(
+                    self._url,
+                    json={"chat_id": self._chat_id, "text": message},
+                )
             r.raise_for_status()
             log.debug("Telegram notification sent.")
         except Exception:

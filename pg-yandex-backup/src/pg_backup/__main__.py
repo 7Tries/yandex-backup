@@ -92,15 +92,17 @@ async def run() -> None:
     )
     listener.set_on_change(on_change)
 
-    scheduler = BackupScheduler(cron_expr=settings.backup_cron, callback=do_backup)
+    scheduler = BackupScheduler(
+        cron_expr=settings.backup_cron, callback=debounce.fire_immediately
+    )
 
     # Start listener and scheduler
     await listener.start()
     scheduler.start()
 
-    # Initial backup on startup
+    # Initial backup on startup (runs through debounce controller to prevent concurrency)
     log.info("Running initial backup on startup...")
-    await do_backup()
+    await debounce.fire_immediately()
 
     await notifier.notify("🚀 pg-yandex-backup service started.")
 

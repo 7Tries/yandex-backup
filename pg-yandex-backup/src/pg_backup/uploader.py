@@ -99,18 +99,33 @@ class Uploader:
                 await self._client.upload_file(url, data)
                 return
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 429:
+                status = exc.response.status_code
+                last_exc = exc
+                if status == 429:
                     msg = (
                         f"Rate limited by Yandex.Disk (attempt {attempt}). "
                         f"Pausing {backoff}s."
                     )
                     log.warning(msg)
                     await self._notifier.notify(f"⏸ {msg}")
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 120.0)
-                    last_exc = exc
-                    continue
-                raise
+                    if attempt < MAX_RETRIES:
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, 120.0)
+                        continue
+                    break
+                elif status >= 500:
+                    log.warning(
+                        "Yandex.Disk server error %d (attempt %d): %s",
+                        status, attempt, exc
+                    )
+                    if attempt < MAX_RETRIES:
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, 120.0)
+                        continue
+                    break
+                else:
+                    # Client errors (401, 403, 409, etc.) should not be retried
+                    raise
             except Exception as exc:
                 log.warning("Upload attempt %d failed: %s", attempt, exc)
                 last_exc = exc

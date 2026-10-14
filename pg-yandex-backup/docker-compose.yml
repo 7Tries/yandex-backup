@@ -7,7 +7,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-mydb}
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres_secret}
-      POSTGRES_PASSWORD_BACKUP: ${POSTGRES_PASSWORD:-backup_secret}
+      POSTGRES_BACKUP_PASSWORD: ${POSTGRES_PASSWORD:-backup_secret}
     ports:
       - "5432:5432"
     volumes:

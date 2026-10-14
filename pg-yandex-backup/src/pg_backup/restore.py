@@ -62,12 +62,31 @@ def restore_sql(
     user: str,
     password: str,
 ) -> None:
-    """Decompress and feed the SQL dump into psql."""
+    """Decompress and feed the SQL dump into psql, creating target DB if missing."""
+    env = {**os.environ, "PGPASSWORD": password}
+
+    # Ensure target database exists before attempting to connect to it
+    check_cmd = [
+        "psql", "-h", host, "-p", str(port), "-U", user, "-d", "postgres",
+        "-tAc", f"SELECT 1 FROM pg_database WHERE datname = '{db}';",
+    ]
+    check_res = subprocess.run(check_cmd, env=env, capture_output=True, text=True)
+    if check_res.returncode == 0 and check_res.stdout.strip() != "1":
+        print(f"Target database '{db}' does not exist. Creating it...")
+        create_cmd = [
+            "psql", "-h", host, "-p", str(port), "-U", user, "-d", "postgres",
+            "-c", f'CREATE DATABASE "{db}";',
+        ]
+        create_res = subprocess.run(create_cmd, env=env, capture_output=True, text=True)
+        if create_res.returncode != 0:
+            err = create_res.stderr.strip()
+            raise RuntimeError(f"Failed to create target database '{db}': {err}")
+        print(f"Database '{db}' created successfully.")
+
     print(
         f"Restoring {sql_gz_path} into database '{db}' "
         f"on {host}:{port} as user '{user}'..."
     )
-    env = {**os.environ, "PGPASSWORD": password}
     with gzip.open(sql_gz_path, "rb") as f:
         sql = f.read()
     proc = subprocess.run(
